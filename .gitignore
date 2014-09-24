@@ -52,3 +52,7 @@ docs/_build/
 
 # PyBuilder
 target/
+/Test4Py/*
+/.idea/*
+/Utils/*.iml
+Utils/oliver/oliver.iml
