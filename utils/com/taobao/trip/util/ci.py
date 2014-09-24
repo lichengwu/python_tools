@@ -1,84 +1,113 @@
 #!/usr/bin/python
-__author__ = 'lichengwu'
-
-import datetime
+#encoding=gbk
+__author__ = 'zuojing'
+import pexpect
+import sys
+import getopt
+import time
 import os
 
 
-def collect(_date):
-    stat = {}
-    metric_path = "/home/admin/at/logs/metric.log.%s" % _date
-    for line in open(metric_path):
-        if "chosenFlightStat" in line:
-            kv = line.split(",")
-            if len(kv) < 3:
-                continue
-            kv = kv[2:]
-            for p in kv:
-                er = p.strip().split("=")
-                if len(er) != 2:
-                    continue
-                k = er[0]
-                v = er[1]
-                if not stat.has_key(k) or int(v) > stat[k]:
-                    stat[k] = int(v)
-
-    for k, v in stat.items():
-        print "%s=%s" % (k, v)
+def enum(**enums):
+    return type('Enum', (), enums)
 
 
-def sum(_date):
-    col = {"PARAM_CITY_CODE": "CITY_CODE_ERROR", "PARAM_AGENT_ID": "NO_AGENT_ID",
-           "PARAM_AGENT_CITY": "AGENT_CITY_ERROR",
-           "PARAM_TRIP_TYPE": "TRIPTYPE_ERROR", "PARAM_PASSENGER_NUM": "PASSENGER_NUM_ERROR",
-           "PARAM_NO_BUSS": "BUSS_ERROR",
-           "PARAM_NO_B2G_USER_INFO": "PARAM_NO_B2G_USER_INFO", "PARAM_NO_SEGMENT": "PARAM_NO_SEGMENT",
-           "PARAM_NO_ITEM": "NO_ITEM", "PARAM_DEP_DATE": "DEP_DATE_ERROR", "B2G_NO_CONFIG": "B2G_PARAM_ERROR",
-           "SEARCH_ERROR": "SEARCH_ERROR", "QUERY_STOCK_ERROR": "QUERY_STOCK_ERROR",
-           "QUERY_FARE_ERROR": "QUERY_FARE_ERROR",
-           "QUERY_POLICY_ERROR": "QUERY_POLICY_ERROR", "KA_AGENT": "KA_AGENT_INVALID", "KA_NO_RESULT": "KA_NO_RESULT",
-           "QUERY_TGQ": "QUERY_TGQ_ERROR", "CHECK_FARE": "CHECK_FARE", "CHECK_POLICY": "CHECK_POLICY",
-           "BUILD_AND_OIL": "BUILD_OIL_ERROR",
-           "CHECK_RD": "CHECK_RD", "WAIT_HSF": "WAIT_HSF_TIMEOUT"}
-    rs = {}
-    tmp = "/tmp/stat_chosen_err.atw"
-    os.system("rrun atx \"python stat_chosen_err.py\" > %s" % tmp)
-    for line in open(tmp):
-        if "atw" in line:
-            continue
-        kv = line.split("=")
-        if len(kv) != 2:
-            continue
-        if not rs.has_key(kv[0]):
-            rs[kv[0]] = int(kv[1])
-        else:
-            rs[kv[0]] = int(kv[1]) + int(rs[kv[0]])
-
-    iCount = 0
-    for k, v in rs.items():
-        if col.has_key(k):
-            iCount += v
-
-    content = "<table border='1' ><tr><th>Reason</th><th>Times</th><th>%%</th></tr>%s</table>"
-
-    cell = "<tr><td>%s</td><td>%s</td><td>%.2f%%</td></tr>"
-    tmp = ""
-    for k, v in rs.items():
-        if col.has_key(k):
-            tmp += cell % (col[k], v, int(v) * 100.0 / iCount)
-
-    tmp += cell % ('', iCount, 100.0)
-
-    c = content % tmp
-    c.replace("\n", '')
-    print c
-    cmd = "java -jar /home/admin/tool/alimail.jar  %s \"%s\" \"%s\"" % (
-        "chengwu.lcw@taobao.com", ("%s chosen error statistics" % _date), c)
-    print cmd
-    os.system(cmd)
+MODE = enum(FULL='full', STOP='stop', START='start', RESTART='restart')
 
 
-if __name__ == "__main__":
-    _date = str(datetime.datetime.strftime(datetime.date.today() - datetime.timedelta(days=1), '%Y-%m-%d'))
-    print _date
-    sum(_date)
+def run_command(ip, user, password, cmd, tmo=600):
+    print 'try connect [%s] using %s' % (ip, user)
+
+    patterns = [user, '.*[Pp]assword:', 'Are you sure you want to continue connecting (yes/no)?',
+                '.*[Pp]ermission denied.*',
+                pexpect.EOF]
+    p = pexpect.spawn(cmd, timeout=tmo)
+    p.logfile = sys.stdout
+    try:
+        try_times = 0
+        i = p.expect(patterns)
+        while i < len(patterns):
+            if try_times > 100:
+                print "尝试100次失败，推出!"
+                sys.exit(1)
+                # first time connect
+            if i == 2:
+                p.sendline('yes')
+            # Permission denied
+            elif i == (len(patterns) - 2):
+                print '帐户%s没有%s的sudo权限，请申请：http://aops.alibaba-inc.com/workflow/account/new/' % (user, ip)
+                sys.exit(1)
+            elif i == (len(patterns) - 1):
+                break
+            else:
+                p.sendline(password)
+                # go on try connect
+            i = p.expect(patterns)
+            try_times += 1
+        p.flush()
+        p.close()
+        print '命令[%s]执行完成!' % cmd
+    except pexpect.TIMEOUT:
+        print '超时，请确认机器[%s]ssh可用，并加大超时时间，当前时间%ss' % (ip, tmo)
+        sys.exit(1)
+    except pexpect.EOF, e:
+        print 'EOF', e
+        sys.exit(1)
+
+
+def get_command(app, user, ip, mode='full'):
+    if mode.lower() == MODE.FULL:
+        build_cmd = 'sudo -u admin -H rm -rf nohup.out > /dev/null 2>&1 ; sudo -u admin -H nohup /home/admin/build.sh ; sudo -u admin -H chmod +r /home/admin/nohup.out'
+    else:
+        build_cmd = 'sudo -u admin -H /home/admin/%s/bin/jbossctl %s' % (app, mode)
+
+    build_cmd = 'ssh -t  %s@%s %s' % (user, ip, build_cmd)
+
+    return build_cmd
+
+
+if __name__ == '__main__':
+    opts, args = getopt.getopt(sys.argv[1:], "i:u:p:a:m:t:")
+    ip = None
+    app = None
+    timeout = 600
+    user = 'chengwu.lcw'
+    password = 'zuojing1234'
+    mode = MODE.FULL
+    for kv in opts:
+        key = kv[0]
+        value = kv[1]
+        if key == '-i':
+            ip = value
+        elif key == '-u':
+            user = value
+        elif key == '-p':
+            password = value
+        elif key == '-a':
+            app = value
+        elif key == '-m':
+            mode = value
+        elif key == '-t':
+            timeout = value
+
+    if app is None:
+        print '请指定应用!'
+        sys.exit(1)
+
+    if ip is None:
+        print '请指定远程机器'
+        sys.exit(1)
+
+    # print "ip=%s,user=%s,password=%s,timeout=%s,app=%s,mode=%s" % (ip, user, password, timeout, app, mode)
+    cmd = get_command(app, user, ip, mode)
+    #执行ci
+    run_command(ip, user, password, cmd, int(timeout))
+    file_name = "/tmp/" + str(int(time.time())) + ".ci"
+    #取得结果
+    read_cmd = 'scp %s@%s:/home/admin/nohup.out %s' % (user, ip, file_name)
+    run_command(ip, user, password, read_cmd)
+    #打印到页面
+    for line in open(file_name):
+        print line
+    os.remove(file_name)
+    sys.exit(0)

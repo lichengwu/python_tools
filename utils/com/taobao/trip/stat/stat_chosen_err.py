@@ -1,15 +1,13 @@
 #!/usr/bin/python
-# encoding=gbk
 __author__ = 'lichengwu'
 
 import datetime
 import os
 
 
-def collect():
-    yesterday = datetime.date.today() - datetime.timedelta(days=1)
+def collect(_date):
     stat = {}
-    metric_path = "/home/admin/at/logs/metric.log.%s" % str(datetime.datetime.strftime(yesterday, '%Y-%m-%d'))
+    metric_path = "/home/admin/at/logs/metric.log.%s" % _date
     for line in open(metric_path):
         if "chosenFlightStat" in line:
             kv = line.split(",")
@@ -29,7 +27,7 @@ def collect():
         print "%s=%s" % (k, v)
 
 
-def sum():
+def sum(_date):
     col = {"PARAM_CITY_CODE": "CITY_CODE_ERROR", "PARAM_AGENT_ID": "NO_AGENT_ID",
            "PARAM_AGENT_CITY": "AGENT_CITY_ERROR",
            "PARAM_TRIP_TYPE": "TRIPTYPE_ERROR", "PARAM_PASSENGER_NUM": "PASSENGER_NUM_ERROR",
@@ -44,7 +42,7 @@ def sum():
            "CHECK_RD": "CHECK_RD", "WAIT_HSF": "WAIT_HSF_TIMEOUT"}
     rs = {}
     tmp = "/tmp/stat_chosen_err.atw"
-    os.system("rrun atx \"python stat_chosen_err.py\" > %s" % tmp)
+    os.system("/home/chengwu.lcw/.bin/rrun atx \"python /home/chengwu.lcw/stat_chosen_err.py\" > %s" % tmp)
     for line in open(tmp):
         if "atw" in line:
             continue
@@ -61,37 +59,31 @@ def sum():
         if col.has_key(k):
             iCount += v
 
-    content = """
-    <table>
-    <tr>
-        <th>Reason</th>
-        <th>Times</th>
-        <th>%</th>
-    </tr>
+    content = "<table border='1' ><tr><th>Reason</th><th>Times</th><th>%%</th></tr>%s</table>"
 
-    %s
-
-</table>"""
-
-    cell = """
-    <tr>
-        <td>%s</td>
-        <td>%s</td>
-        <td>%.2f%%</td>
-    </tr>
-    """
+    cell = "<tr><td>%s</td><td>%s</td><td>%.2f%%</td></tr>"
     tmp = ""
     for k, v in rs.items():
         if col.has_key(k):
             tmp += cell % (col[k], v, int(v) * 100.0 / iCount)
 
-    tmp += cell % ('', iCount, '100')
+    tmp += cell % ('', iCount, 100.0)
 
     c = content % tmp
+    c.replace("\n", '')
     print c
-    os.system("java -jar /home/admin/tool/alimail.jar  %s %s \"%s\"" % (
-        "chengwu.lcw@taobao.com,guxu.cjp@taobao.com,jianran.tfh@taobao.com", "% chosen error statistics" % (), c.decode("utf-8")))
+    f = open("/home/chengwu.lcw/py/data/stat_chosen_err.data","w")
+    f.write(c)
+    f.close()
+    os.system("scp /home/chengwu.lcw/py/data/stat_chosen_err.data chengwu.lcw@10.207.12.67:/home/chengwu.lcw/data/%s_stat_chosen_err.data" % _date)
+    # cmd = "java -jar /home/admin/tool/alimail.jar  %s \"%s\" \"%s\"" % (
+    #    # "alicorp-trip-et-data@list.alibaba-inc.com", ("%s chosen error statistics" % _date), c)
+    #     "chengwu.lcw@taobao.com,guxu.cjp@taobao.com", ("%s chosen error statistics" % _date), c)
+    # os.system(cmd)
 
 
 if __name__ == "__main__":
-    sum()
+    _date = str(datetime.datetime.strftime(datetime.date.today() - datetime.timedelta(days=1), '%Y-%m-%d'))
+    print _date
+    sum(_date)
+
