@@ -1,12 +1,14 @@
 #!/usr/bin/python
 __author__ = 'lichengwu'
 
-import datetime
 import os
+
+import datetime
 
 
 def collect(_date):
-    stat = {}
+    stat_max = {}
+    stat_min = {}
     metric_path = "/home/admin/at/logs/metric.log.%s" % _date
     for line in open(metric_path):
         if "chosenFlightStat" in line:
@@ -20,11 +22,16 @@ def collect(_date):
                     continue
                 k = er[0]
                 v = er[1]
-                if not stat.has_key(k) or int(v) > stat[k]:
-                    stat[k] = int(v)
+                if not stat_max.has_key(k) or int(v) > stat_max[k]:
+                    stat_max[k] = int(v)
+                if not stat_min.has_key(k) or int(v) < stat_min[k]:
+                    stat_min[k] = int(v)
 
-    for k, v in stat.items():
-        print "%s=%s" % (k, v)
+    for k, v in stat_max.items():
+        min = 0
+        if stat_min.has_key(k):
+            min = stat_min[k]
+        print "%s=%s" % (k, v - min)
 
 
 def sum(_date):
@@ -72,18 +79,20 @@ def sum(_date):
     c = content % tmp
     c.replace("\n", '')
     print c
-    f = open("/home/chengwu.lcw/py/data/stat_chosen_err.data","w")
+    f = open("/home/chengwu.lcw/py/data/stat_chosen_err.data", "w")
     f.write(c)
     f.close()
-    os.system("scp /home/chengwu.lcw/py/data/stat_chosen_err.data chengwu.lcw@10.207.12.67:/home/chengwu.lcw/data/%s_stat_chosen_err.data" % _date)
+    os.system(
+        "scp /home/chengwu.lcw/py/data/stat_chosen_err.data chengwu.lcw@10.207.12.67:/home/chengwu.lcw/data/%s_stat_chosen_err.data" % _date)
     # cmd = "java -jar /home/admin/tool/alimail.jar  %s \"%s\" \"%s\"" % (
-    #    # "alicorp-trip-et-data@list.alibaba-inc.com", ("%s chosen error statistics" % _date), c)
-    #     "chengwu.lcw@taobao.com,guxu.cjp@taobao.com", ("%s chosen error statistics" % _date), c)
+    # # "alicorp-trip-et-data@list.alibaba-inc.com", ("%s chosen error statistics" % _date), c)
+    # "chengwu.lcw@taobao.com,guxu.cjp@taobao.com", ("%s chosen error statistics" % _date), c)
     # os.system(cmd)
 
 
 if __name__ == "__main__":
     _date = str(datetime.datetime.strftime(datetime.date.today() - datetime.timedelta(days=1), '%Y-%m-%d'))
     print _date
-    sum(_date)
+    # sum(_date)
+    collect(_date)
 
