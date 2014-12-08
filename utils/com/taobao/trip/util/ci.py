@@ -72,7 +72,7 @@ if __name__ == '__main__':
     app = None
     timeout = 600
     user = 'chengwu.lcw'
-    password = 'zuojing1234'
+    password = 'xxxxx'
     mode = MODE.FULL
     for kv in opts:
         key = kv[0]

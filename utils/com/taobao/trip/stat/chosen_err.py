@@ -1,7 +1,11 @@
 __author__ = 'lichengwu'
 
-import json
+from sys import path
+
+path.append("/home/chengwu.lcw/stat/")
+import simplejson as json
 import sys
+import monitor
 
 if __name__ == "__main__":
     path = sys.argv[1]
@@ -47,9 +51,22 @@ if __name__ == "__main__":
     content = "<table border='1' ><tr><th>Reason</th><th>Times</th><th>%%</th></tr>%s</table>"
     cell = "<tr><td>%s</td><td>%s</td><td>%.2f%%</td></tr>"
     tmp = ""
+    monitor_data = {"chosen_err_total": iCount}
     for k, v in rs.items():
         if col.has_key(k):
             tmp += cell % (col[k], v, int(v) * 100.0 / iCount)
+            mk = None
+            if "PARAM_" in k:
+                mk = "chosen_err_param"
+            else:
+                mk = "chosen_err_" + k.lower()
+            if monitor_data.has_key(mk):
+                monitor_data[mk] += int(v)
+            else:
+                monitor_data[mk] = int(v)
+    # send data to alimonitor
+    monitor.put("data_collect", monitor_data)
+
     tmp += cell % ('', iCount, 100.0)
     c = content % tmp
     c.replace("\n", '')
